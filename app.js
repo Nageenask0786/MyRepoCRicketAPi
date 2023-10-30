@@ -1,16 +1,25 @@
+const convertDbObjectToResponseObject = (dbObject) => {
+  return {
+    PlayerId: dbObject.player_id,
+    PlayerName: dbObject.player_name,
+  };
+};
+const convertDbObject2 = (dbObject) => {
+  return {
+    matchId: dbObject.match_id,
+    match: dbObject.match,
+    year: dbObject.year,
+  };
+};
+
 const express = require("express");
-
 const path = require("path");
-
 const { open } = require("sqlite");
 const sqlite3 = require("sqlite3");
 const app = express();
 app.use(express.json());
-
-const dbPath = path.join(__dirname, "cricketTeam.db");
-
+const dbPath = path.join(__dirname, "cricketMatchDetails.db");
 let db = null;
-
 const initializeDBAndServer = async () => {
   try {
     db = await open({
@@ -18,83 +27,110 @@ const initializeDBAndServer = async () => {
       driver: sqlite3.Database,
     });
     app.listen(3000, () => {
-      console.log("Server Running at http://localhost:3000/");
+      console.log("SERVER RUNNING AT http://localhost/3000");
     });
   } catch (e) {
-    console.log(`DB Error: ${e.message}`);
+    console.log(`DB Error ${e.message}`);
     process.exit(1);
   }
 };
-
 initializeDBAndServer();
+//get app
 app.get("/players/", async (request, response) => {
-  const getPlayersQuery = `
+  const getPlayersArray = `
 SELECT
-*
+player_id as playerId,
+player_name as playerName
 FROM
-cricket_team
-order by
-player_id;
-`;
-  const PlayersArray = await db.all(getPlayersQuery);
-  response.send(PlayersArray);
-});
-//postAPI
-app.post("/players/", async (request, response) => {
-  const playerDetails = request.body;
-  const { playerName, jerseyNumber, role } = playerDetails;
-  const addPlayerQuery = `INSERT INTO
-cricket_team(player_name,jersey_number,role)
-VALUES ('${playerName}',
-'${jerseyNumber}',
-'${role}');`;
-
-  const dbResponse = await db.run(addPlayerQuery);
-  const playerId = dbResponse.lastID;
-
-  response.send("Player Added to Team");
+player_details`;
+  const playersArray = await db.all(getPlayersArray);
+  response.send(playersArray);
 });
 
-
-//Get AP
+//api2
 app.get("/players/:playerId/", async (request, response) => {
   const { playerId } = request.params;
-  const getPlayersQuery = `
+  const getPlayerQuery = `
 SELECT
-*
+player_id as playerId,
+player_name as playerName
 FROM
-cricket_team
-WHERE player_id = ${playerId}
-`;
-  let player = await db.get(getPlayersQuery);
+player_details
+WHERE
+player_id = ${playerId};`;
+  const player = await db.get(getPlayerQuery);
   response.send(player);
 });
-//put APi
+
+//put
 app.put("/players/:playerId/", async (request, response) => {
   const { playerId } = request.params;
   const playerDetails = request.body;
-  const { playerName, jerseyNumber, role } = playerDetails;
-  const updatePlayerQuery = `
-UPDATE cricket_team
-SET player_name = '${playerName}',
-jersey_number = '${jerseyNumber}',
-role = '${role}'
-WHERE player_id = ${playerId}
-`;
-  await db.run(updatePlayerQuery);
+  const { playerName } = playerDetails;
+  const UpdatePlayerQuery = `UPDATE
+player_details SET
+player_name = '${playerName}'
+WHERE player_id = '${playerId}';`;
+  await db.run(UpdatePlayerQuery);
   response.send("Player Details Updated");
 });
-
-//DEL API
-app.delete("/players/:playerId/", async (request, response) => {
+//api4
+app.get("/matches/:matchId/", async (request, response) => {
+  const { matchId } = request.params;
+  const getMatchQuery = `
+SELECT
+*
+FROM
+match_details
+WHERE
+match_id = ${matchId};`;
+  const match = await db.get(getMatchQuery);
+  response.send(convertDbObject2(match));
+});
+//api5
+app.get("/players/:playerId/matches/", async (request, response) => {
   const { playerId } = request.params;
-  const deletePlayerQuery = `
-DELETE FROM
-cricket_team
+  const getAuthorBooksQuery = `
+SELECT
+match_id as matchId,
+match ,
+year
+FROM
+player_match_score NATURAL JOIN
+match_details
 WHERE
 player_id = ${playerId};`;
-  await db.run(deletePlayerQuery);
-  response.send("Player Removed");
+  const playersArray = await db.all(getAuthorBooksQuery);
+  response.send(playersArray);
 });
-
+//
+app.get("/matches/:matchId/players/", async (request, response) => {
+  const { matchId } = request.params;
+  const getPlayerMatchesQuery = `
+ SELECT player_id as playerId,
+ player_name as playerName
+ FROM 
+ player_match_score NATURAL JOIN 
+ player_details 
+ WHERE match_id = ${matchId};`;
+  const matchesArray = await db.all(getPlayerMatchesQuery);
+  response.send(matchesArray);
+});
+//api7
+app.get("/players/:playerId/playerScores/", async (request, response) => {
+  const { playerId } = request.params;
+  const getPlayerScored = `
+    SELECT
+    player_details.player_id AS playerId,
+    player_details.player_name AS playerName,
+    SUM(player_match_score.score) AS totalScore,
+    SUM(fours) AS totalFours,
+    SUM(sixes) AS totalSixes FROM 
+    player_details INNER JOIN player_match_score ON
+    player_details.player_id = player_match_score.player_id
+    WHERE player_details.player_id = ${playerId};
+    `;
+  const playerStats = await db.get(getPlayerScored);
+  response.send(playerStats);
+});
 module.exports = app;
